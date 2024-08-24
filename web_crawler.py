@@ -11,6 +11,7 @@ from urllib.robotparser import RobotFileParser
 from urllib.parse import urlparse, urljoin
 import pandas as pd
 import numpy as np
+import hashlib
 import pickle
 import time
 import sys 
@@ -36,7 +37,7 @@ def store_data(data, fn):
 		with open(fn, 'wb') as file:
 			pickle.dump(data, file)
 	except Exception as e:
-		dprint(f'Encountered error: {e}')
+		dprint(f'! Encountered error: {e}')
 
 def load_data(fn, default=None):
 	data = default
@@ -44,7 +45,7 @@ def load_data(fn, default=None):
 		with open(fn, 'rb') as file:
 			data = pickle.load(file)
 	except Exception as e:
-		dprint(f'Encountered error: {e}')
+		dprint(f'! Encountered error: {e}')
 	return data
 
 def save_data(stack, touched, adj_dict, metadata):
@@ -69,11 +70,12 @@ def create_folder(fn):
 		return
 	
 	except PermissionError:
-		print(f"Permission denied: Unable to create folder '{fn}' in the current directory.")
+		print(	f"! Permission denied: Unable to create folder"
+				" '{fn}' in the current directory.")
 	except OSError as e:
-		print(f"OS error occurred: {e}")
+		print(f"! OS error occurred: {e}")
 	except Exception as e:
-		print(f"Unexpected error: {e}")
+		print(f"! Unexpected error: {e}")
 	sys.exit(1)
 
 def filter_links(href):
@@ -98,22 +100,42 @@ def can_fetch(rp, url, prev_domain):
 	return rp.can_fetch(USER_AGENT, url)
 
 def build_adj_matrix(adj_dict):
-    """Creates an adjacency matrix for a list of URLs."""
-    urls = adj_dict.keys()
-    n = len(urls)
-    adjacency_matrix = np.zeros((n, n), dtype=int)
+	"""Creates an adjacency matrix for a list of URLs."""
+	urls = adj_dict.keys()
+	n = len(urls)
+	adjacency_matrix = np.zeros((n, n), dtype=int)
 
-    # Populate the adjacency matrix
-    for i, url in enumerate(urls):
-    	links = adj_dict[url]
-    	if len(links) > 0:
-	        for j, target_url in enumerate(urls):
-	            if target_url in links:
-	                adjacency_matrix[i][j] = 1
+	# Populate the adjacency matrix
+	for i, url in enumerate(urls):
+		links = adj_dict[url]
+		if len(links) > 0:
+			for j, target_url in enumerate(urls):
+				if target_url in links:
+					adjacency_matrix[i][j] = 1
 
-    df = pd.DataFrame(adjacency_matrix, columns=urls)
-    df.to_csv(ADJ_MATRIX_FN, index=False)
-    dprint('Created adjaceny matrix successfully')
+	df = pd.DataFrame(adjacency_matrix, columns=urls)
+	df.to_csv(ADJ_MATRIX_FN, index=False)
+	dprint('Created adjaceny matrix successfully')
+
+def save_page(page, folder, url):
+	sha256_hash = hashlib.sha256()
+	sha256_hash.update((url.encode('utf-8')))
+	fn = sha256_hash.hexdigest()
+	# fn = re.sub(r'[^a-zA-Z0-9_\-.]', '_', url)
+	cwd = os.getcwd()
+	path = os.path.join(cwd, f'{folder}/{fn}.html')
+	dprint(f'Saving HTML doc to path: {path}')
+	if not os.path.exists(path):
+		try:
+			with open(path, 'w', encoding='UTF-8') as file:
+				file.write(str(page.prettify()))
+			dprint('Saved HTML page successfully')
+			return 1
+		except Exception as e:
+			dprint(f'! Encountered error while saving HTML page: {e}')
+	else:
+		dprint(f'! Hash collision: skipping HTML doc')
+	return 0
 
 def main():
 	"""
@@ -135,18 +157,18 @@ def main():
 
 	# Metadata
 	stack = load_data(STACK_FN, default=[
-			'https://en.wiktionary.org/wiki/Wiktionary:Main_Page',
-			'https://en.wikipedia.org/wiki/Main_Page'
+			  'https://en.wiktionary.org/wiki/Wiktionary:Main_Page'
+			, 'https://en.wikipedia.org/wiki/Main_Page'
 		]
 	)
 	adj_dict = load_data(ADJ_DICT_FN, default=dict())
 	touched = load_data(TOUCHED_FN, default=set())
-	pages_visited = load_data(METADATA_FN, default=0)
+	pages_visited, docs_saved = load_data(METADATA_FN, default=(0,0))
 
 
 	domains = [
-		'wikipedia',
-		'wiktionary',
+		  'wikipedia'
+		, 'wiktionary'
 	]
 	current_domain = ['']
 
@@ -160,6 +182,17 @@ def main():
 				# Take top item off of stack
 				url = stack.pop()
 
+				# Validate Port
+				parsed_url = urlparse(url)
+				try:
+					port = parsed_url.port
+				except Exception as e:
+					dprint(f'! Encountered error '
+							'while checking port validity: {e}')
+					continue
+				if port is not None and (port < 0 or port > 65535):
+					dprint(f'Skipping invalid port URL: {url}')
+					continue
 
 				# Do not open restricted URLs
 				if not can_fetch(rp, url, current_domain):
@@ -180,53 +213,68 @@ def main():
 
 				# SAVE THIS!!!
 				page = BeautifulSoup(link.text, 'html.parser')
+				docs_saved += save_page(page, DOCS_FN, url)
 				
 				# Add current url to the adjacency dict
 				adj_dict[url] = []
 
 				# Parse for new links (DFS)
 				body = page.find(id='bodyContent')
-				for link in body.find_all('a', href=filter_links):
-					# Make sure the domain remains the same
-					full_url = urljoin(url, link['href'])
-					link_domain = urlparse(full_url).netloc
-					if full_url in touched:
-						continue
-					touched.add(full_url)
+				if body:
+					for link in body.find_all('a', href=filter_links):
+						# Make sure the domain remains the same
+						full_url = urljoin(url, link['href'])
+						link_domain = urlparse(full_url).netloc
+						if full_url in touched:
+							continue
+						touched.add(full_url)
 
-					# Does the link domain contain one of the desired domains?
-					contains_domain = False
-					for domain in domains:
-						if re.compile(domain).search(link_domain):
-							contains_domain = True
-							break
-					# If it contains a domain, push to top of stack
-					if contains_domain:
-						stack.append(full_url)
-					# Otherwise, insert at bottom of stack
-					else:
-						stack.insert(0, full_url)
+						# Does the link domain contain one of the desired domains?
+						contains_domain = False
+						for domain in domains:
+							if re.compile(domain).search(link_domain):
+								contains_domain = True
+								break
+						# If it contains a domain, push to top of stack
+						if contains_domain:
+							stack.append(full_url)
+						# Otherwise, insert at bottom of stack
+						else:
+							stack.insert(0, full_url)
 
-					# Update Adjacency Matrix
-					adj_dict[url].append(full_url)
+						# Update Adjacency Matrix
+						adj_dict[url].append(full_url)
 
 				# DEBUG Metadata
 				pages_visited += 1
 				dprint(f'Length of Stack: {len(stack)}')
 				dprint(f'Pages visited: {pages_visited}')
+				dprint(f'Docs saved: {docs_saved}')
 				dprint('')
 
 				# Backup Metadata
 				if pages_visited % BACKUP_PERIOD == 1:
-					save_data(stack, touched, adj_dict, pages_visited)
+					save_data(
+						stack, 
+						touched, 
+						adj_dict, 
+						(pages_visited, docs_saved))
 
 				time.sleep(1)
 			except Exception as e:
-				print(f'Encountered error: {e}')
-				save_data(stack, touched, adj_dict, pages_visited)
+				print(f'! Encountered error: {e}')
+				save_data(
+					stack, 
+					touched, 
+					adj_dict, 
+					(pages_visited, docs_saved))
 				return adj_dict
 	except KeyboardInterrupt:
-		save_data(stack, touched, adj_dict, pages_visited)
+		save_data(
+			stack, 
+			touched, 
+			adj_dict, 
+			(pages_visited, docs_saved))
 		return adj_dict
 
 if __name__ == '__main__':
@@ -235,6 +283,6 @@ if __name__ == '__main__':
 		dprint('Building adjacency matrix...')
 		build_adj_matrix(adj_dict)
 	else:
-		print('Unable to build adjaceny matrix (adj_dict is None)')
+		print('! Unable to build adjaceny matrix (adj_dict is None)')
 	print('Exiting...')
 
