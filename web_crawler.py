@@ -24,6 +24,7 @@ DOCS_FN = 'docs' # folder name containing all HTML documents
 STACK_FN = 'stack.dat'
 TOUCHED_FN = 'touched.dat'
 ADJ_DICT_FN = 'adj_dict.dat'
+COLLISIONS_FN = 'collisions.dat'
 METADATA_FN = 'metadata.dat'
 ADJ_MATRIX_FN = 'adjacency_matrix.csv'
 BACKUP_PERIOD = 100 # how many loops before backing up metadata 
@@ -48,11 +49,12 @@ def load_data(fn, default=None):
 		dprint(f'! Encountered error: {e}')
 	return data
 
-def save_data(stack, touched, adj_dict, metadata):
+def save_data(stack, touched, adj_dict, collisions, metadata):
 	dprint('Saving data...')
 	store_data(stack, STACK_FN)
 	store_data(touched, TOUCHED_FN)
 	store_data(adj_dict, ADJ_DICT_FN)
+	store_data(collisions, COLLISIONS_FN)
 	store_data(metadata, METADATA_FN)
 
 def create_folder(fn):
@@ -108,6 +110,8 @@ def build_adj_matrix(adj_dict):
 	# Populate the adjacency matrix
 	for i, url in enumerate(urls):
 		links = adj_dict[url]
+		adjacency_matrix[i][i] = 1 
+		# Assume pages link to themselves (refresh button)
 		if len(links) > 0:
 			for j, target_url in enumerate(urls):
 				if target_url in links:
@@ -117,7 +121,11 @@ def build_adj_matrix(adj_dict):
 	df.to_csv(ADJ_MATRIX_FN, index=False)
 	dprint('Created adjaceny matrix successfully')
 
-def save_page(page, folder, url):
+def save_page(page, folder, url, collisions):
+	"""
+	Save HTML document to local folder
+	collisions produce the same path name, but increase a counter suffix
+	"""
 	sha256_hash = hashlib.sha256()
 	sha256_hash.update((url.encode('utf-8')))
 	fn = sha256_hash.hexdigest()
@@ -125,16 +133,29 @@ def save_page(page, folder, url):
 	cwd = os.getcwd()
 	path = os.path.join(cwd, f'{folder}/{fn}.html')
 	dprint(f'Saving HTML doc to path: {path}')
-	if not os.path.exists(path):
-		try:
-			with open(path, 'w', encoding='UTF-8') as file:
-				file.write(str(page.prettify()))
-			dprint('Saved HTML page successfully')
-			return 1
-		except Exception as e:
-			dprint(f'! Encountered error while saving HTML page: {e}')
-	else:
-		dprint(f'! Hash collision: skipping HTML doc')
+
+	if os.path.exists(path):
+		# If a collision occurs, add the colliding url to the collision path
+		# When loading up a url doc, 
+		#   first check if the hashed path exists in collisions
+		# If it does, check if the url is in the collisions
+		# If it is, take the path with the index of the url + 1.
+		# Otherwise, take the original path
+		dprint(f'Hash collision: {path}')
+		if not path in collisions:
+			collisions[path] = [url]
+		else:
+			collisions[path].append(url)
+		path = os.path.join(cwd, f'{folder}/{fn}_{len(collisions[path])}.html')
+		dprint(f'Creating new path: {path}')
+
+	try:
+		with open(path, 'w', encoding='UTF-8') as file:
+			file.write(str(page.prettify()))
+		dprint('Saved HTML page successfully')
+		return 1
+	except Exception as e:
+		dprint(f'! Encountered error while saving HTML page: {e}')
 	return 0
 
 def main():
@@ -163,7 +184,11 @@ def main():
 	)
 	adj_dict = load_data(ADJ_DICT_FN, default=dict())
 	touched = load_data(TOUCHED_FN, default=set())
-	pages_visited, docs_saved = load_data(METADATA_FN, default=(0,0))
+	collisions = load_data(COLLISIONS_FN, default=dict())
+	pages_visited, docs_saved = load_data(
+		  METADATA_FN
+		, default=(0,0)
+	)
 
 
 	domains = [
@@ -213,7 +238,7 @@ def main():
 
 				# SAVE THIS!!!
 				page = BeautifulSoup(link.text, 'html.parser')
-				docs_saved += save_page(page, DOCS_FN, url)
+				docs_saved += save_page(page, DOCS_FN, url, collisions)
 				
 				# Add current url to the adjacency dict
 				adj_dict[url] = []
@@ -258,6 +283,7 @@ def main():
 						stack, 
 						touched, 
 						adj_dict, 
+						collisions,
 						(pages_visited, docs_saved))
 
 				time.sleep(1)
@@ -267,6 +293,7 @@ def main():
 					stack, 
 					touched, 
 					adj_dict, 
+					collisions,
 					(pages_visited, docs_saved))
 				return adj_dict
 	except KeyboardInterrupt:
@@ -274,15 +301,36 @@ def main():
 			stack, 
 			touched, 
 			adj_dict, 
+			collisions,
 			(pages_visited, docs_saved))
 		return adj_dict
 
 if __name__ == '__main__':
-	adj_dict = main()
-	if not adj_dict is None:
-		dprint('Building adjacency matrix...')
-		build_adj_matrix(adj_dict)
-	else:
-		print('! Unable to build adjaceny matrix (adj_dict is None)')
-	print('Exiting...')
+	# adj_dict = main()
+	# if not adj_dict is None:
+	# 	dprint('Building adjacency matrix...')
+	# 	build_adj_matrix(adj_dict)
+	# else:
+	# 	print('! Unable to build adjaceny matrix (adj_dict is None)')
+	# print('Exiting...')
 
+	collisions = load_data(COLLISIONS_FN, default=dict())
+	docs_saved = 0
+	create_folder(DOCS_FN)
+	print(f'Collisions: {collisions}')
+
+	for i in range(3):
+		link = requests.get('https://en.wikipedia.org/wiki/Main_Page')
+		page = BeautifulSoup(link.text, 'html.parser')
+		docs_saved += save_page(
+			page
+			, DOCS_FN
+			, 'https://en.wikipedia.org/wiki/Main_Page'
+			, collisions
+		)
+
+		time.sleep(1)
+
+	store_data(collisions, COLLISIONS_FN)
+
+	print(f'Docs saved: {docs_saved}')
