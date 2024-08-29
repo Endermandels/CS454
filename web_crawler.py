@@ -22,9 +22,6 @@ import os
 DEBUG = True
 USER_AGENT = '*'
 DOCS_FN = 'docs' # folder name containing all HTML documents
-STACK_FN = 'stack.dat'
-TOUCHED_FN = 'touched.dat'
-ADJ_DICT_FN = 'adj_dict.dat'
 COLLISIONS_FN = 'collisions.dat'
 METADATA_FN = 'metadata.dat'
 ADJ_MATRIX_FN = 'adjacency_matrix.csv'
@@ -39,6 +36,7 @@ def store_data(data, fn):
 	"""
 	Stores data in a pickle file of filename fn in the cwd
 	"""
+	dprint(f'Saving data to: {fn}')
 	try:
 		with open(fn, 'wb') as file:
 			pickle.dump(data, file)
@@ -58,14 +56,6 @@ def load_data(fn, default=None):
 	except Exception as e:
 		dprint(f'! Encountered error: {e}')
 	return data
-
-def save_data(stack, touched, adj_dict, collisions, metadata):
-	dprint('Saving data...')
-	store_data(stack, STACK_FN)
-	store_data(touched, TOUCHED_FN)
-	store_data(adj_dict, ADJ_DICT_FN)
-	store_data(collisions, COLLISIONS_FN)
-	store_data(metadata, METADATA_FN)
 
 def create_folder(fn):
 	dprint(f"Creating folder '{fn}'")
@@ -92,18 +82,20 @@ def filter_links(href):
 		return not re.compile('/wiki/Special:Random').search(href)
 	return False
 
-def new_domain(rp, url, prev_domain, delay):
+def new_domain(url, prev_domain, delay):
 	"""
-	Updates RobotParser instance with new robots.txt url.
-	Changes the program delay according to robots.txt info.
+	Checks if a new domain has been entered
+
+	If so, returns a new RobotParser, domain, and delay
+	Otherwise, returns None
 	"""
 	domain = urlparse(url).netloc
-	if domain != prev_domain[0]:
+	if domain != prev_domain:
+		rp = RobotFileParser()
 		# Get new robots.txt url
-		dprint(f'Switching from domain {prev_domain[0]} to {domain}')
+		dprint(f'Switching from domain {prev_domain} to {domain}')
 		rp.set_url(f'https://{domain}/robots.txt')
 		rp.read()
-		prev_domain[0] = domain
 
 		# Determine delay
 		crawl_delay = rp.crawl_delay(USER_AGENT)
@@ -114,9 +106,10 @@ def new_domain(rp, url, prev_domain, delay):
 		if request_rate:
 			interval = request_rate.seconds / request_rate.requests
 		new_delay = max(crawl_delay, interval)
-		if new_delay != delay[0]:
-			delay[0] = new_delay
+		if new_delay != delay:
 			dprint(f'Delay updated to: {new_delay}')
+		return rp, domain, new_delay
+	return None
 
 def build_adj_matrix(adj_dict):
 	"""
@@ -188,18 +181,22 @@ def main():
 	"""
 
 	# Metadata
-	stack = load_data(STACK_FN, default=[
-			  'https://en.wiktionary.org/wiki/Wiktionary:Main_Page'
-			, 'https://en.wikipedia.org/wiki/Main_Page'
-		]
+	stack, touched, adj_dict, pages_visited, docs_saved = load_data(
+		METADATA_FN
+		, default=(
+			[
+			  	'https://en.wiktionary.org/wiki/Wiktionary:Main_Page'
+				, 'https://en.wikipedia.org/wiki/Main_Page'
+				, 'https://docs.python.org/3/library/'
+			],
+			set(),
+			dict(),
+			0,
+			0
+		)
 	)
-	adj_dict = load_data(ADJ_DICT_FN, default=dict())
-	touched = load_data(TOUCHED_FN, default=set())
+	# Store collisions separately for checking collisions while querying docs
 	collisions = load_data(COLLISIONS_FN, default=dict())
-	pages_visited, docs_saved = load_data(
-		  METADATA_FN
-		, default=(0,0)
-	)
 
 	# If enough documents have already been collected
 	if DOCS_COUNT > 0 and docs_saved >= DOCS_COUNT:
@@ -211,14 +208,14 @@ def main():
 	domains = [
 		  'wikipedia'
 		, 'wiktionary'
+		, 'python'
 	]
 
 	# Keeps track of the current domain in case the domain changes
 	#   and the RobotParser needs to be updated
-	current_domain = ['']
-
-	rp = RobotFileParser()
-	delay = [1] # Sleep delay in seconds
+	current_domain = ''
+	delay = 1 # Sleep delay in seconds
+	rp = None # Robot Parser
 
 	create_folder(DOCS_FN)
 
@@ -241,7 +238,14 @@ def main():
 					continue
 
 				# Check if the domain changes and update RobotParser
-				new_domain(rp, url, current_domain, delay)
+				result = new_domain(url, current_domain, delay)
+				if result:
+					rp, current_domain, delay = result
+
+				# Make sure RobotParser is not None
+				if not rp:
+					dprint('! RobotParser is None')
+					continue
 
 				# Do not open restricted URLs
 				if not rp.can_fetch(USER_AGENT, url):
@@ -306,49 +310,67 @@ def main():
 
 				# Backup Metadata
 				if pages_visited % BACKUP_PERIOD == 1:
-					save_data(
-						stack, 
-						touched, 
-						adj_dict, 
-						collisions,
-						(pages_visited, docs_saved)
+					store_data(
+						(
+							stack 
+							, touched 
+							, adj_dict 
+							, pages_visited 
+							, docs_saved
+						),
+						METADATA_FN
 					)
+					store_data(collisions, COLLISIONS_FN)
 
 				# Check if enough documents have been collected
 				if DOCS_COUNT > 0 and docs_saved >= DOCS_COUNT:
 					dprint(f'Collected required {DOCS_COUNT} documents')
-					save_data(
-						stack, 
-						touched, 
-						adj_dict, 
-						collisions,
-						(pages_visited, docs_saved)
+					store_data(
+						(
+							stack 
+							, touched 
+							, adj_dict 
+							, pages_visited 
+							, docs_saved
+						),
+						METADATA_FN
 					)
+					store_data(collisions, COLLISIONS_FN)
 					return adj_dict
 
-				time.sleep(delay[0])
+				time.sleep(delay)
 			except Exception as e:
 				print(f'! Encountered error: {e}')
-				save_data(
-					stack, 
-					touched, 
-					adj_dict, 
-					collisions,
-					(pages_visited, docs_saved)
+				store_data(
+					(
+						stack 
+						, touched 
+						, adj_dict 
+						, pages_visited 
+						, docs_saved
+					),
+					METADATA_FN
 				)
+				store_data(collisions, COLLISIONS_FN)
 				return adj_dict
 	except KeyboardInterrupt:
-		save_data(
-			stack, 
-			touched, 
-			adj_dict, 
-			collisions,
-			(pages_visited, docs_saved)
+		store_data(
+			(
+				stack 
+				, touched 
+				, adj_dict 
+				, pages_visited 
+				, docs_saved
+			),
+			METADATA_FN
 		)
+		store_data(collisions, COLLISIONS_FN)
+		print(f'Docs collected: {docs_saved}')
 		return adj_dict
 
 if __name__ == '__main__':
 	start_time = datetime.now()
+	print('Starting web crawl')
 	adj_dict = main()
 	if not adj_dict is None:
 		dprint('Building adjacency matrix...')
