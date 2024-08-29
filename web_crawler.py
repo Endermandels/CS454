@@ -2,13 +2,14 @@
 Assignment 1 - Web Crawler
 Elijah Delavar
 CS 454-01
-x/xx/2024
+9/4/2024
 """
 
-import requests						# requests webpages
-from bs4 import BeautifulSoup		# converts html to english
+import requests
+from bs4 import BeautifulSoup
 from urllib.robotparser import RobotFileParser
 from urllib.parse import urlparse, urljoin
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import hashlib
@@ -27,13 +28,17 @@ ADJ_DICT_FN = 'adj_dict.dat'
 COLLISIONS_FN = 'collisions.dat'
 METADATA_FN = 'metadata.dat'
 ADJ_MATRIX_FN = 'adjacency_matrix.csv'
-BACKUP_PERIOD = 100 # how many loops before backing up metadata 
+BACKUP_PERIOD = 100 # how many loops before backing up metadata
+DOCS_COUNT = 6000 # how many documents need to be collected (-1 for until stopped)
 
 def dprint(s):
 	if DEBUG:
 		print(s)
 
 def store_data(data, fn):
+	"""
+	Stores data in a pickle file of filename fn in the cwd
+	"""
 	try:
 		with open(fn, 'wb') as file:
 			pickle.dump(data, file)
@@ -41,6 +46,11 @@ def store_data(data, fn):
 		dprint(f'! Encountered error: {e}')
 
 def load_data(fn, default=None):
+	"""
+	Loads data from a pickle file of filename fn in the cwd
+
+	Defaults to default if no file is detected (or any other error)
+	"""
 	data = default
 	try:
 		with open(fn, 'rb') as file:
@@ -58,26 +68,19 @@ def save_data(stack, touched, adj_dict, collisions, metadata):
 	store_data(metadata, METADATA_FN)
 
 def create_folder(fn):
+	dprint(f"Creating folder '{fn}'")
 	try:
 		cwd = os.getcwd()
 		path = os.path.join(cwd, fn)
 
-		# Check if the folder already exists
 		if not os.path.exists(path):
-			# Create the folder
 			os.makedirs(path)
 			dprint(f"Folder '{fn}' created successfully at {path}.")
 		else:
 			dprint(f"Folder '{fn}' already exists at {path}.")
 		return
-	
-	except PermissionError:
-		print(	f"! Permission denied: Unable to create folder"
-				" '{fn}' in the current directory.")
-	except OSError as e:
-		print(f"! OS error occurred: {e}")
 	except Exception as e:
-		print(f"! Unexpected error: {e}")
+		print(f"! Encountered error: {e}")
 	sys.exit(1)
 
 def filter_links(href):
@@ -85,24 +88,40 @@ def filter_links(href):
 	Filter invalid or unhelpful links.
 	"""
 	if href:
+		# Do not include Random, as it could cause problems while storing the urls
 		return not re.compile('/wiki/Special:Random').search(href)
 	return False
 
-def can_fetch(rp, url, prev_domain):
+def new_domain(rp, url, prev_domain, delay):
 	"""
 	Updates RobotParser instance with new robots.txt url.
-	Returns whether the url param can be fetched.
+	Changes the program delay according to robots.txt info.
 	"""
 	domain = urlparse(url).netloc
 	if domain != prev_domain[0]:
+		# Get new robots.txt url
 		dprint(f'Switching from domain {prev_domain[0]} to {domain}')
 		rp.set_url(f'https://{domain}/robots.txt')
 		rp.read()
 		prev_domain[0] = domain
-	return rp.can_fetch(USER_AGENT, url)
+
+		# Determine delay
+		crawl_delay = rp.crawl_delay(USER_AGENT)
+		if not crawl_delay:
+			crawl_delay = 1
+		request_rate = rp.request_rate(USER_AGENT)
+		interval = 0
+		if request_rate:
+			interval = request_rate.seconds / request_rate.requests
+		new_delay = max(crawl_delay, interval)
+		if new_delay != delay[0]:
+			delay[0] = new_delay
+			dprint(f'Delay updated to: {new_delay}')
 
 def build_adj_matrix(adj_dict):
-	"""Creates an adjacency matrix for a list of URLs."""
+	"""
+	Creates an adjacency matrix for a list of URLs.
+	"""
 	urls = adj_dict.keys()
 	n = len(urls)
 	adjacency_matrix = np.zeros((n, n), dtype=int)
@@ -110,8 +129,8 @@ def build_adj_matrix(adj_dict):
 	# Populate the adjacency matrix
 	for i, url in enumerate(urls):
 		links = adj_dict[url]
-		adjacency_matrix[i][i] = 1 
 		# Assume pages link to themselves (refresh button)
+		adjacency_matrix[i][i] = 1 
 		if len(links) > 0:
 			for j, target_url in enumerate(urls):
 				if target_url in links:
@@ -124,23 +143,24 @@ def build_adj_matrix(adj_dict):
 def save_page(page, folder, url, collisions):
 	"""
 	Save HTML document to local folder
-	collisions produce the same path name, but increase a counter suffix
+	Name HTML document by hashing the url using sha256.
+	Collisions produce the same path name, but increase a counter suffix.
+	If a collision occurs, add the colliding url to the collision path.
+	When loading up a url doc, 
+	  first check if the hashed path exists in collisions.dat.
+		If it does, check if the url is in the collisions.
+			If it is, take the path with the index of the url + 1.
+			Otherwise, take the original path.
 	"""
 	sha256_hash = hashlib.sha256()
 	sha256_hash.update((url.encode('utf-8')))
 	fn = sha256_hash.hexdigest()
-	# fn = re.sub(r'[^a-zA-Z0-9_\-.]', '_', url)
 	cwd = os.getcwd()
 	path = os.path.join(cwd, f'{folder}/{fn}.html')
 	dprint(f'Saving HTML doc to path: {path}')
 
 	if os.path.exists(path):
-		# If a collision occurs, add the colliding url to the collision path
-		# When loading up a url doc, 
-		#   first check if the hashed path exists in collisions
-		# If it does, check if the url is in the collisions
-		# If it is, take the path with the index of the url + 1.
-		# Otherwise, take the original path
+		# Hash collision
 		dprint(f'Hash collision: {path}')
 		if not path in collisions:
 			collisions[path] = [url]
@@ -149,6 +169,7 @@ def save_page(page, folder, url, collisions):
 		path = os.path.join(cwd, f'{folder}/{fn}_{len(collisions[path])}.html')
 		dprint(f'Creating new path: {path}')
 
+	# Write HTML document to disk
 	try:
 		with open(path, 'w', encoding='UTF-8') as file:
 			file.write(str(page.prettify()))
@@ -160,20 +181,10 @@ def save_page(page, folder, url, collisions):
 
 def main():
 	"""
-	STEPS:
+	Crawls the web, specifically focusing on 
+		the domains listed in the domains list.
 
-	1. Seed queue with initial URLs
-	2. While queue is not empty:
-		i. 		Pop URL, L, from queue
-		ii. 	If L is not HTML or in visited dictionary, skip it
-		iii.	Download HTML page for L
-		iv.		Parse HTML page for new links
-		v.		Append new links to end of queue
-
-	NOTES:
-
-	Add time delay to be polite
-	Filter out disallowed URLs
+	Returns the adjacency matrix of the collected urls.
 	"""
 
 	# Metadata
@@ -190,24 +201,34 @@ def main():
 		, default=(0,0)
 	)
 
+	# If enough documents have already been collected
+	if DOCS_COUNT > 0 and docs_saved >= DOCS_COUNT:
+		print('! No more documents are required: '
+			f'docs_saved={docs_saved} DOCS_COUNT={DOCS_COUNT}')
+		return None # Do not need to create the adjacency matrix again
 
+	# Domains containing the following strings will be promoted
 	domains = [
 		  'wikipedia'
 		, 'wiktionary'
 	]
+
+	# Keeps track of the current domain in case the domain changes
+	#   and the RobotParser needs to be updated
 	current_domain = ['']
 
 	rp = RobotFileParser()
+	delay = [1] # Sleep delay in seconds
 
 	create_folder(DOCS_FN)
 
 	try:
 		while len(stack) > 0:
 			try:
-				# Take top item off of stack
+				# Pop top item of stack
 				url = stack.pop()
 
-				# Validate Port
+				# Validate Port (this resolves a niche error)
 				parsed_url = urlparse(url)
 				try:
 					port = parsed_url.port
@@ -219,14 +240,15 @@ def main():
 					dprint(f'Skipping invalid port URL: {url}')
 					continue
 
+				# Check if the domain changes and update RobotParser
+				new_domain(rp, url, current_domain, delay)
+
 				# Do not open restricted URLs
-				if not can_fetch(rp, url, current_domain):
+				if not rp.can_fetch(USER_AGENT, url):
 					dprint(f'Skipping disallowed URL: {url}')
 					continue
 
 				link = requests.get(url)
-				# Current_url may be different from url
-				#   in case the random page is accessed
 				touched.add(url)
 
 				# Check if response is HTML
@@ -235,10 +257,15 @@ def main():
 					continue
 
 				dprint(f'Visited URL: {url}')
+				pages_visited += 1
 
-				# SAVE THIS!!!
+				# Collect and save HTML document
 				page = BeautifulSoup(link.text, 'html.parser')
-				docs_saved += save_page(page, DOCS_FN, url, collisions)
+				saved = save_page(page, DOCS_FN, url, collisions)
+				if saved == 0:
+					dprint('Skipping url with bad HTML document')
+					continue
+				docs_saved += saved
 				
 				# Add current url to the adjacency dict
 				adj_dict[url] = []
@@ -247,31 +274,31 @@ def main():
 				body = page.find(id='bodyContent')
 				if body:
 					for link in body.find_all('a', href=filter_links):
-						# Make sure the domain remains the same
 						full_url = urljoin(url, link['href'])
-						link_domain = urlparse(full_url).netloc
+
+						# Skip already seen urls
 						if full_url in touched:
 							continue
 						touched.add(full_url)
 
-						# Does the link domain contain one of the desired domains?
+						# Promote domains with strings listed in domains list
+						link_domain = urlparse(full_url).netloc
 						contains_domain = False
 						for domain in domains:
 							if re.compile(domain).search(link_domain):
 								contains_domain = True
 								break
-						# If it contains a domain, push to top of stack
+						# If it contains a desired domain, push to top of stack
 						if contains_domain:
 							stack.append(full_url)
 						# Otherwise, insert at bottom of stack
 						else:
 							stack.insert(0, full_url)
 
-						# Update Adjacency Matrix
+						# Update adjacency dictionary
 						adj_dict[url].append(full_url)
 
 				# DEBUG Metadata
-				pages_visited += 1
 				dprint(f'Length of Stack: {len(stack)}')
 				dprint(f'Pages visited: {pages_visited}')
 				dprint(f'Docs saved: {docs_saved}')
@@ -284,9 +311,22 @@ def main():
 						touched, 
 						adj_dict, 
 						collisions,
-						(pages_visited, docs_saved))
+						(pages_visited, docs_saved)
+					)
 
-				time.sleep(1)
+				# Check if enough documents have been collected
+				if DOCS_COUNT > 0 and docs_saved >= DOCS_COUNT:
+					dprint(f'Collected required {DOCS_COUNT} documents')
+					save_data(
+						stack, 
+						touched, 
+						adj_dict, 
+						collisions,
+						(pages_visited, docs_saved)
+					)
+					return adj_dict
+
+				time.sleep(delay[0])
 			except Exception as e:
 				print(f'! Encountered error: {e}')
 				save_data(
@@ -294,7 +334,8 @@ def main():
 					touched, 
 					adj_dict, 
 					collisions,
-					(pages_visited, docs_saved))
+					(pages_visited, docs_saved)
+				)
 				return adj_dict
 	except KeyboardInterrupt:
 		save_data(
@@ -302,35 +343,18 @@ def main():
 			touched, 
 			adj_dict, 
 			collisions,
-			(pages_visited, docs_saved))
+			(pages_visited, docs_saved)
+		)
 		return adj_dict
 
 if __name__ == '__main__':
-	# adj_dict = main()
-	# if not adj_dict is None:
-	# 	dprint('Building adjacency matrix...')
-	# 	build_adj_matrix(adj_dict)
-	# else:
-	# 	print('! Unable to build adjaceny matrix (adj_dict is None)')
-	# print('Exiting...')
-
-	collisions = load_data(COLLISIONS_FN, default=dict())
-	docs_saved = 0
-	create_folder(DOCS_FN)
-	print(f'Collisions: {collisions}')
-
-	for i in range(3):
-		link = requests.get('https://en.wikipedia.org/wiki/Main_Page')
-		page = BeautifulSoup(link.text, 'html.parser')
-		docs_saved += save_page(
-			page
-			, DOCS_FN
-			, 'https://en.wikipedia.org/wiki/Main_Page'
-			, collisions
-		)
-
-		time.sleep(1)
-
-	store_data(collisions, COLLISIONS_FN)
-
-	print(f'Docs saved: {docs_saved}')
+	start_time = datetime.now()
+	adj_dict = main()
+	if not adj_dict is None:
+		dprint('Building adjacency matrix...')
+		build_adj_matrix(adj_dict)
+	else:
+		print('! Unable to build adjaceny matrix (adj_dict is None)')
+	finish_time = datetime.now() - start_time
+	print(f'Total runtime: {finish_time}')
+	print('Exiting...')
