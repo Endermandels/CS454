@@ -9,7 +9,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.robotparser import RobotFileParser
 from urllib.parse import urlparse, urljoin
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import hashlib
@@ -129,8 +129,8 @@ def build_adj_matrix(adj_dict):
 				if target_url in links:
 					adjacency_matrix[i][j] = 1
 
-	df = pd.DataFrame(adjacency_matrix, columns=urls)
-	df.to_csv(ADJ_MATRIX_FN, index=False)
+	df = pd.DataFrame(adjacency_matrix, index=urls, columns=urls)
+	df.to_csv(ADJ_MATRIX_FN)
 	dprint('Created adjaceny matrix successfully')
 
 def save_page(page, folder, url, collisions):
@@ -180,19 +180,21 @@ def main():
 	Returns the adjacency matrix of the collected urls.
 	"""
 
+	start_time = datetime.now()
+
 	# Metadata
-	stack, touched, adj_dict, pages_visited, docs_saved = load_data(
+	stack, touched, adj_dict, pages_visited, docs_saved, total_time = load_data(
 		METADATA_FN
 		, default=(
 			[
 			  	'https://en.wiktionary.org/wiki/Wiktionary:Main_Page'
 				, 'https://en.wikipedia.org/wiki/Main_Page'
-				, 'https://docs.python.org/3/library/'
 			],
 			set(),
 			dict(),
 			0,
-			0
+			0,
+			timedelta(seconds=0)
 		)
 	)
 	# Store collisions separately for checking collisions while querying docs
@@ -202,13 +204,12 @@ def main():
 	if DOCS_COUNT > 0 and docs_saved >= DOCS_COUNT:
 		print('! No more documents are required: '
 			f'docs_saved={docs_saved} DOCS_COUNT={DOCS_COUNT}')
-		return None # Do not need to create the adjacency matrix again
+		return None, 0 # Do not need to create the adjacency matrix again
 
 	# Domains containing the following strings will be promoted
 	domains = [
 		  'wikipedia'
 		, 'wiktionary'
-		, 'python'
 	]
 
 	# Keeps track of the current domain in case the domain changes
@@ -218,6 +219,7 @@ def main():
 	rp = None # Robot Parser
 
 	create_folder(DOCS_FN)
+
 
 	try:
 		while len(stack) > 0:
@@ -325,6 +327,7 @@ def main():
 				# Check if enough documents have been collected
 				if DOCS_COUNT > 0 and docs_saved >= DOCS_COUNT:
 					dprint(f'Collected required {DOCS_COUNT} documents')
+					finish_time = datetime.now() - start_time
 					store_data(
 						(
 							stack 
@@ -332,15 +335,18 @@ def main():
 							, adj_dict 
 							, pages_visited 
 							, docs_saved
+							, total_time + finish_time
 						),
 						METADATA_FN
 					)
 					store_data(collisions, COLLISIONS_FN)
-					return adj_dict
+					print(f'Docs collected: {docs_saved}')
+					return adj_dict, finish_time
 
 				time.sleep(delay)
 			except Exception as e:
 				print(f'! Encountered error: {e}')
+				finish_time = datetime.now() - start_time
 				store_data(
 					(
 						stack 
@@ -348,12 +354,15 @@ def main():
 						, adj_dict 
 						, pages_visited 
 						, docs_saved
+						, total_time + finish_time
 					),
 					METADATA_FN
 				)
 				store_data(collisions, COLLISIONS_FN)
-				return adj_dict
+				print(f'Docs collected: {docs_saved}')
+				return adj_dict, finish_time
 	except KeyboardInterrupt:
+		finish_time = datetime.now() - start_time
 		store_data(
 			(
 				stack 
@@ -361,22 +370,21 @@ def main():
 				, adj_dict 
 				, pages_visited 
 				, docs_saved
+				, total_time + finish_time
 			),
 			METADATA_FN
 		)
 		store_data(collisions, COLLISIONS_FN)
 		print(f'Docs collected: {docs_saved}')
-		return adj_dict
+		return adj_dict, finish_time
 
 if __name__ == '__main__':
-	start_time = datetime.now()
 	print('Starting web crawl')
-	adj_dict = main()
+	adj_dict, total_time = main()
 	if not adj_dict is None:
 		dprint('Building adjacency matrix...')
 		build_adj_matrix(adj_dict)
+		dprint(f'Total runtime for all docs: {total_time}')
 	else:
 		print('! Unable to build adjaceny matrix (adj_dict is None)')
-	finish_time = datetime.now() - start_time
-	print(f'Total runtime: {finish_time}')
 	print('Exiting...')
