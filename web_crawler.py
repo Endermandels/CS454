@@ -27,6 +27,14 @@ METADATA_FN = 'metadata.dat'
 ADJ_MATRIX_FN = 'adjacency_matrix.csv'
 BACKUP_PERIOD = 100 # how many loops before backing up metadata
 DOCS_COUNT = 6000 # how many documents need to be collected (-1 for until stopped)
+DOMAINS = [
+	'wikipedia'
+	, 'wiktionary'
+] # Domains containing these strings will be promoted
+SEED_URLS = [
+	'https://en.wiktionary.org/wiki/Wiktionary:Main_Page'
+	, 'https://en.wikipedia.org/wiki/Main_Page'
+] # Seeded URLs used in the first execution of the program
 
 def dprint(s):
 	if DEBUG:
@@ -183,10 +191,7 @@ def main():
 	stack, touched, adj_dict, collisions, pages_visited, docs_saved, total_time = load_data(
 		METADATA_FN
 		, default=(
-			[
-			  	'https://en.wiktionary.org/wiki/Wiktionary:Main_Page'
-				, 'https://en.wikipedia.org/wiki/Main_Page'
-			]
+			SEED_URLS
 			, set()
 			, dict()
 			, dict()
@@ -204,11 +209,6 @@ def main():
 			f'docs_saved={docs_saved} DOCS_COUNT={DOCS_COUNT}')
 		return None, 0 # Do not need to create the adjacency matrix again
 
-	# Domains containing the following strings will be promoted
-	domains = [
-		  'wikipedia'
-		, 'wiktionary'
-	]
 
 	# Keeps track of the current domain in case the domain changes
 	#   and the RobotParser needs to be updated
@@ -288,7 +288,7 @@ def main():
 						# Promote domains with strings listed in domains list
 						link_domain = urlparse(full_url).netloc
 						contains_domain = False
-						for domain in domains:
+						for domain in DOMAINS:
 							if re.compile(domain).search(link_domain):
 								contains_domain = True
 								break
