@@ -9,7 +9,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.robotparser import RobotFileParser
 from urllib.parse import urlparse, urljoin
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import hashlib
@@ -22,11 +22,19 @@ import os
 DEBUG = True
 USER_AGENT = '*'
 DOCS_FN = 'docs' # folder name containing all HTML documents
-COLLISIONS_FN = 'collisions.dat'
+URL_MAP_FN = 'url_map.dat'
 METADATA_FN = 'metadata.dat'
 ADJ_MATRIX_FN = 'adjacency_matrix.csv'
 BACKUP_PERIOD = 100 # how many loops before backing up metadata
 DOCS_COUNT = 6000 # how many documents need to be collected (-1 for until stopped)
+DOMAINS = [
+	'wikipedia'
+	, 'wiktionary'
+] # Domains containing these strings will be promoted
+SEED_URLS = [
+	'https://en.wiktionary.org/wiki/Wiktionary:Main_Page'
+	, 'https://en.wikipedia.org/wiki/Main_Page'
+] # Seeded URLs used in the first execution of the program
 
 def dprint(s):
 	if DEBUG:
@@ -60,14 +68,11 @@ def load_data(fn, default=None):
 def create_folder(fn):
 	dprint(f"Creating folder '{fn}'")
 	try:
-		cwd = os.getcwd()
-		path = os.path.join(cwd, fn)
-
-		if not os.path.exists(path):
-			os.makedirs(path)
-			dprint(f"Folder '{fn}' created successfully at {path}.")
+		if not os.path.exists(fn):
+			os.makedirs(fn)
+			dprint(f"Folder '{fn}' created successfully.")
 		else:
-			dprint(f"Folder '{fn}' already exists at {path}.")
+			dprint(f"Folder '{fn}' already exists.")
 		return
 	except Exception as e:
 		print(f"! Encountered error: {e}")
@@ -129,43 +134,43 @@ def build_adj_matrix(adj_dict):
 				if target_url in links:
 					adjacency_matrix[i][j] = 1
 
-	df = pd.DataFrame(adjacency_matrix, columns=urls)
-	df.to_csv(ADJ_MATRIX_FN, index=False)
+	df = pd.DataFrame(adjacency_matrix, index=urls, columns=urls)
+	df.to_csv(ADJ_MATRIX_FN)
 	dprint('Created adjaceny matrix successfully')
 
-def save_page(page, folder, url, collisions):
+def save_page(page, folder, url, collisions, url_map):
 	"""
 	Save HTML document to local folder
 	Name HTML document by hashing the url using sha256.
 	Collisions produce the same path name, but increase a counter suffix.
-	If a collision occurs, add the colliding url to the collision path.
-	When loading up a url doc, 
-	  first check if the hashed path exists in collisions.dat.
-		If it does, check if the url is in the collisions.
-			If it is, take the path with the index of the url + 1.
-			Otherwise, take the original path.
+
+	Returns whether the page was saved (1) or not (0)
 	"""
+	if url in url_map:
+		dprint(f'! URL already exists in URL map: {url}')
+		return 0
+
 	sha256_hash = hashlib.sha256()
 	sha256_hash.update((url.encode('utf-8')))
 	fn = sha256_hash.hexdigest()
-	cwd = os.getcwd()
-	path = os.path.join(cwd, f'{folder}/{fn}.html')
+	path = f'./{folder}/{fn}.html'
 	dprint(f'Saving HTML doc to path: {path}')
 
 	if os.path.exists(path):
 		# Hash collision
 		dprint(f'Hash collision: {path}')
 		if not path in collisions:
-			collisions[path] = [url]
+			collisions[path] = 0
 		else:
-			collisions[path].append(url)
-		path = os.path.join(cwd, f'{folder}/{fn}_{len(collisions[path])}.html')
+			collisions[path] += 1
+		path = f'./{folder}/{fn}_{collisions[path]}.html'
 		dprint(f'Creating new path: {path}')
 
 	# Write HTML document to disk
 	try:
 		with open(path, 'w', encoding='UTF-8') as file:
 			file.write(str(page.prettify()))
+		url_map[url] = path
 		dprint('Saved HTML page successfully')
 		return 1
 	except Exception as e:
@@ -180,36 +185,30 @@ def main():
 	Returns the adjacency matrix of the collected urls.
 	"""
 
+	start_time = datetime.now()
+
 	# Metadata
-	stack, touched, adj_dict, pages_visited, docs_saved = load_data(
+	stack, touched, adj_dict, collisions, pages_visited, docs_saved, total_time = load_data(
 		METADATA_FN
 		, default=(
-			[
-			  	'https://en.wiktionary.org/wiki/Wiktionary:Main_Page'
-				, 'https://en.wikipedia.org/wiki/Main_Page'
-				, 'https://docs.python.org/3/library/'
-			],
-			set(),
-			dict(),
-			0,
-			0
+			SEED_URLS
+			, set()
+			, dict()
+			, dict()
+			, 0
+			, 0
+			, timedelta(seconds=0)
 		)
 	)
-	# Store collisions separately for checking collisions while querying docs
-	collisions = load_data(COLLISIONS_FN, default=dict())
+	# Mapping of urls to document names for easy query lookup
+	url_map = load_data(URL_MAP_FN, default=dict())
 
 	# If enough documents have already been collected
 	if DOCS_COUNT > 0 and docs_saved >= DOCS_COUNT:
 		print('! No more documents are required: '
 			f'docs_saved={docs_saved} DOCS_COUNT={DOCS_COUNT}')
-		return None # Do not need to create the adjacency matrix again
+		return None, 0 # Do not need to create the adjacency matrix again
 
-	# Domains containing the following strings will be promoted
-	domains = [
-		  'wikipedia'
-		, 'wiktionary'
-		, 'python'
-	]
 
 	# Keeps track of the current domain in case the domain changes
 	#   and the RobotParser needs to be updated
@@ -218,6 +217,7 @@ def main():
 	rp = None # Robot Parser
 
 	create_folder(DOCS_FN)
+
 
 	try:
 		while len(stack) > 0:
@@ -265,11 +265,11 @@ def main():
 
 				# Collect and save HTML document
 				page = BeautifulSoup(link.text, 'html.parser')
-				saved = save_page(page, DOCS_FN, url, collisions)
+				saved = save_page(page, DOCS_FN, url, collisions, url_map)
 				if saved == 0:
-					dprint('Skipping url with bad HTML document')
+					dprint('Skipping URL')
 					continue
-				docs_saved += saved
+				docs_saved += 1
 				
 				# Add current url to the adjacency dict
 				adj_dict[url] = []
@@ -288,7 +288,7 @@ def main():
 						# Promote domains with strings listed in domains list
 						link_domain = urlparse(full_url).netloc
 						contains_domain = False
-						for domain in domains:
+						for domain in DOMAINS:
 							if re.compile(domain).search(link_domain):
 								contains_domain = True
 								break
@@ -310,73 +310,58 @@ def main():
 
 				# Backup Metadata
 				if pages_visited % BACKUP_PERIOD == 1:
+					finish_time = datetime.now() - start_time
 					store_data(
 						(
 							stack 
 							, touched 
 							, adj_dict 
+							, collisions
 							, pages_visited 
 							, docs_saved
+							, total_time + finish_time
 						),
 						METADATA_FN
 					)
-					store_data(collisions, COLLISIONS_FN)
+					store_data(url_map, URL_MAP_FN)
 
 				# Check if enough documents have been collected
 				if DOCS_COUNT > 0 and docs_saved >= DOCS_COUNT:
 					dprint(f'Collected required {DOCS_COUNT} documents')
-					store_data(
-						(
-							stack 
-							, touched 
-							, adj_dict 
-							, pages_visited 
-							, docs_saved
-						),
-						METADATA_FN
-					)
-					store_data(collisions, COLLISIONS_FN)
-					return adj_dict
+					break
 
 				time.sleep(delay)
 			except Exception as e:
 				print(f'! Encountered error: {e}')
-				store_data(
-					(
-						stack 
-						, touched 
-						, adj_dict 
-						, pages_visited 
-						, docs_saved
-					),
-					METADATA_FN
-				)
-				store_data(collisions, COLLISIONS_FN)
-				return adj_dict
+				break
 	except KeyboardInterrupt:
-		store_data(
-			(
-				stack 
-				, touched 
-				, adj_dict 
-				, pages_visited 
-				, docs_saved
-			),
-			METADATA_FN
-		)
-		store_data(collisions, COLLISIONS_FN)
-		print(f'Docs collected: {docs_saved}')
-		return adj_dict
+		print(f'Received Kill Signal')
+
+	finish_time = datetime.now() - start_time
+	total_time += finish_time
+	store_data(
+		(
+			stack 
+			, touched 
+			, adj_dict 
+			, collisions
+			, pages_visited 
+			, docs_saved
+			, total_time
+		),
+		METADATA_FN
+	)
+	store_data(url_map, URL_MAP_FN)
+	print(f'Docs collected: {docs_saved}')
+	return adj_dict, total_time
 
 if __name__ == '__main__':
-	start_time = datetime.now()
 	print('Starting web crawl')
-	adj_dict = main()
+	adj_dict, total_time = main()
 	if not adj_dict is None:
 		dprint('Building adjacency matrix...')
 		build_adj_matrix(adj_dict)
+		dprint(f'Total runtime for all docs: {total_time}')
 	else:
 		print('! Unable to build adjaceny matrix (adj_dict is None)')
-	finish_time = datetime.now() - start_time
-	print(f'Total runtime: {finish_time}')
 	print('Exiting...')
