@@ -47,11 +47,15 @@ class TF_IDF(object):
         def sort_func(tup):
             return tup[1]
 
+        touched_docs = set()
         result = []
         
         for term in Q.split():
             if term in self.term_to_docs:
                 for d in self.doc_to_terms.keys():
+                    if d in touched_docs:
+                        continue
+                    touched_docs.add(d)
                     relevance = self.relevance(d, Q)
                     if relevance > 0:
                         result.append((d, relevance))
@@ -73,7 +77,7 @@ class TF_IDF(object):
 
 def main():
     tf_idf = TF_IDF('wine.csv')
-    for row in tf_idf.tf_idf('tremendous', 5):
+    for row in tf_idf.tf_idf('mac watson', 5):
         print(row)
 
 if __name__ == '__main__':
