@@ -13,7 +13,7 @@ class TF_IDF(object):
 	def load_data(self, dataFile):
 		"""
 		doc_to_terms maps the doc id to the total number of terms and the count of each term
-		term_to_docs maps each term to the number of docs containing that term
+		term_to_docs maps each term to a list of docs containing that term
 		"""
 		doc_to_terms = dict()
 		term_to_docs = dict()
@@ -29,10 +29,10 @@ class TF_IDF(object):
 				terms = row[1].split()
 				for term in terms:
 					if not term in term_to_docs:
-						term_to_docs[term] = 1
+						term_to_docs[term] = [row[0]]
 						touched_terms.add(term)
 					elif not term in touched_terms:
-						term_to_docs[term] += 1
+						term_to_docs[term].append(row[0])
 						touched_terms.add(term)
 
 					if not term in term_counts:
@@ -44,13 +44,31 @@ class TF_IDF(object):
 		return doc_to_terms, term_to_docs
 
 	def tf_idf(self, Q, k):
-		pass
+		def sort_func(tup):
+			return tup[1]
+
+		touched_docs = set()
+		result = []
+		
+		for term in Q.split():
+			if term in self.term_to_docs:
+				for d in self.term_to_docs[term]:
+					if d in touched_docs:
+						continue
+					touched_docs.add(d)
+					relevance = self.relevance(d, Q)
+					if relevance > 0:
+						result.append((d, relevance))
+
+		result.sort(reverse=True, key=sort_func)
+		return result[:k]
 
 	def relevance(self, d, Q):
 		result = 0
 
 		for term in Q.split():
-			result += self.tf(d, term) / self.term_to_docs[term]
+			if term in self.doc_to_terms[d].counts:
+				result += self.tf(d, term) / len(self.term_to_docs[term])
 
 		return result
 
@@ -59,7 +77,7 @@ class TF_IDF(object):
 
 def main():
 	tf_idf = TF_IDF('test.csv')
-	print(tf_idf.relevance('0', 'hello'))
+	print(tf_idf.tf_idf('hello w', 2))
 
 if __name__ == '__main__':
 	main()
