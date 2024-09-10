@@ -5,43 +5,61 @@ import csv
 class TF_IDF(object):
 	def __init__(self, dataFile):
 		# Docs: key = doc id, value = doc contents
-		self.docs = self.load_data(dataFile)
+		self.doc_to_terms, self.term_to_docs = self.load_data(dataFile)
+		print(self.doc_to_terms)
+		print()
+		print(self.term_to_docs)
 
 	def load_data(self, dataFile):
 		"""
-		Each document id is the key in docs
-		The value in docs is a tuple containing the total number of terms and
-			the count of each term in the document
+		doc_to_terms maps the doc id to the total number of terms and the count of each term
+		term_to_docs maps each term to the number of docs containing that term
 		"""
-		docs = dict()
+		doc_to_terms = dict()
+		term_to_docs = dict()
 
 		with open(dataFile, mode='r') as file:
 			csvFile = csv.reader(file)
-			DocStats = namedtuple('DocStats', ['size', 'counts'])
+			DocTerms = namedtuple('DocTerms', ['size', 'counts'])
 			for row in csvFile:
+				if row[0] == 'id':
+					continue
+				touched_terms = set()
 				term_counts = dict()
 				terms = row[1].split()
 				for term in terms:
+					if not term in term_to_docs:
+						term_to_docs[term] = 1
+						touched_terms.add(term)
+					elif not term in touched_terms:
+						term_to_docs[term] += 1
+						touched_terms.add(term)
+
 					if not term in term_counts:
 						term_counts[term] = 1
 					else:
 						term_counts[term] += 1
-				docs[row[0]] = DocStats(len(terms), term_counts)
+				doc_to_terms[row[0]] = DocTerms(len(terms), term_counts)
 
-		return docs
+		return doc_to_terms, term_to_docs
 
 	def tf_idf(self, Q, k):
 		pass
 
 	def relevance(self, d, Q):
-		pass
+		result = 0
+
+		for term in Q.split():
+			result += self.tf(d, term) / self.term_to_docs[term]
+
+		return result
 
 	def tf(self, d, t):
-		return math.log(1 + self.docs[d].counts[t] / self.docs[d].size)
+		return math.log10(1 + self.doc_to_terms[d].counts[t] / self.doc_to_terms[d].size)
 
 def main():
-	tf_idf = TF_IDF('wine.csv')
-	print(tf_idf.tf('4999', 'fruit'))
+	tf_idf = TF_IDF('test.csv')
+	print(tf_idf.relevance('0', 'hello'))
 
 if __name__ == '__main__':
 	main()
