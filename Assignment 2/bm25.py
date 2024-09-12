@@ -2,7 +2,7 @@ from collections import namedtuple
 import math
 import csv
 
-DEBUG = False
+DEBUG = True
 
 class BM_25(object):
     def __init__(self, dataFile):
@@ -72,9 +72,9 @@ class BM_25(object):
                 qtf = self.qtf(split_query, term)
                 result += idf *  tf * qtf
                 if DEBUG:
-                    print(idf)
-                    print(tf)
-                    print(qtf)
+                    print('idf:', idf)
+                    print('tf:', tf)
+                    print('qtf:', qtf)
                     print()
 
         return result
@@ -90,25 +90,25 @@ class BM_25(object):
     def tf(self, doc, term):
         k1 = 1.2
         b = 0.75
-        ft = self.doc_to_terms[doc].counts[term] / self.doc_to_terms[doc].size
+        ft = self.doc_to_terms[doc].counts[term]
         d = self.doc_to_terms[doc].size
         if DEBUG:
             print('ft: ', ft)
             print('d: ', d)
             print('avg len d: ', self.avg_doc_len)
-        return ((k1 + 1)*ft) / (k1*((1-b)+b*(d/self.avg_doc_len))+ft)
+        return ((k1 + 1)*ft) / ( k1*((1-b)+b*(d/self.avg_doc_len))+ft )
     
     def qtf(self, split_query, term):
         k2 = 500
-        qft = len([i for i in split_query if i == term]) / len(split_query)
+        qft = split_query.count(term)
         if DEBUG:
             print('qft: ', qft)
         return ((k2 + 1)*qft) / (k2 + qft)
     
 def main():
     bm25 = BM_25('wine.csv')
-    for row in bm25.bm25('mac watson', 5):
+    for row in bm25.bm25('tremendous', 5):
         print(row)
-
+    
 if __name__ == '__main__':
     main()
