@@ -13,7 +13,7 @@ def main(filename):
             if not algo in ['t', 'b']:
                 print("Unclear algorithm (please specify using 't' or 'b')")
                 continue
-            query = input("Query: ")
+            query = input("Query: ").lower()
             num_results = int(input("Number of returned results: "))
             
             if algo == 't':
