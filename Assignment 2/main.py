@@ -9,14 +9,14 @@ def main(filename):
 
     try:
         while True:
-            algo = input("Algorithm ('t' for tf_idf; 'b' for bm25): ")
+            algo = input("Algorithm ('t' for tf_idf; 'b' for bm25): ").lower()
             if not algo in ['t', 'b']:
                 print("Unclear algorithm (please specify using 't' or 'b')")
                 continue
             query = input("Query: ")
             num_results = int(input("Number of returned results: "))
             
-            if algo.lower() == 't':
+            if algo == 't':
                 result = tf_idf.tf_idf(query, num_results)
             else:
                 result = bm25.bm25(query, num_results)
