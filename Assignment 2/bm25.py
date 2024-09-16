@@ -2,7 +2,7 @@ from collections import namedtuple
 import math
 import csv
 
-DEBUG = True
+DEBUG = False
 
 class BM_25(object):
     def __init__(self, dataFile):
