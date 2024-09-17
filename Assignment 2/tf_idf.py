@@ -44,6 +44,11 @@ class TF_IDF(object):
         return doc_to_terms, term_to_docs
 
     def tf_idf(self, Q, k):
+        """
+        Calculates the relevance of every document given the query
+
+        Returns up to k of the most relevant documents in descending order of relevance
+        """
         def sort_func(tup):
             return tup[1]
 
@@ -58,6 +63,9 @@ class TF_IDF(object):
         return result[:k]
 
     def relevance(self, d, Q):
+        """
+        Returns the relevance of a document given the query
+        """
         result = 0
 
         for term in Q.split():
@@ -67,6 +75,7 @@ class TF_IDF(object):
         return result
 
     def tf(self, d, t):
+        """ Term Frequency """
         return math.log(1 + self.doc_to_terms[d].counts[t] / self.doc_to_terms[d].size)
 
 def main():
