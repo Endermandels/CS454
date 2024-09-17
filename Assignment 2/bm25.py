@@ -48,6 +48,11 @@ class BM_25(object):
         return doc_to_terms, term_to_docs
     
     def bm25(self, query, k):
+        """
+        Calculates the relevance of every document given the query
+
+        Returns up to k of the most relevant documents in descending order of relevance
+        """
         def sort_func(tup):
             return tup[1]
 
@@ -62,6 +67,9 @@ class BM_25(object):
         return result[:k]
     
     def relevance(self, d, query):
+        """
+        Returns the relevance of a document given the query
+        """
         result = 0
 
         split_query = query.strip().split()
@@ -80,6 +88,7 @@ class BM_25(object):
         return result
     
     def idf(self, term):
+        """ Inverted Document Frequency """
         n = len(self.doc_to_terms.keys())
         dft = self.term_to_docs[term]
         if DEBUG:
@@ -88,6 +97,7 @@ class BM_25(object):
         return math.log((n - dft + 0.5) / (dft + 0.5))
     
     def tf(self, doc, term):
+        """ Term Frequency """
         k1 = 1.2
         b = 0.75
         ft = self.doc_to_terms[doc].counts[term]
@@ -99,6 +109,7 @@ class BM_25(object):
         return ((k1 + 1)*ft) / ( k1*((1-b)+b*(d/self.avg_doc_len))+ft )
     
     def qtf(self, split_query, term):
+        """ Query Term Frequency """
         k2 = 500
         qft = split_query.count(term)
         if DEBUG:
