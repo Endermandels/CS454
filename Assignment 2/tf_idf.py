@@ -29,10 +29,10 @@ class TF_IDF(object):
                 terms = row[1].split()
                 for term in terms:
                     if not term in term_to_docs:
-                        term_to_docs[term] = [row[0]]
+                        term_to_docs[term] = 1
                         touched_terms.add(term)
                     elif not term in touched_terms:
-                        term_to_docs[term].append(row[0])
+                        term_to_docs[term] += 1
                         touched_terms.add(term)
 
                     if not term in term_counts:
@@ -47,18 +47,12 @@ class TF_IDF(object):
         def sort_func(tup):
             return tup[1]
 
-        touched_docs = set()
         result = []
         
-        for term in Q.split():
-            if term in self.term_to_docs:
-                for d in self.term_to_docs[term]:
-                    if d in touched_docs:
-                        continue
-                    touched_docs.add(d)
-                    relevance = self.relevance(d, Q)
-                    if relevance > 0:
-                        result.append((d, relevance))
+        for d in self.doc_to_terms.keys():
+            relevance = self.relevance(d, Q)
+            if relevance > 0:
+                result.append((d, relevance))
 
         result.sort(reverse=True, key=sort_func)
         return result[:k]
@@ -68,7 +62,7 @@ class TF_IDF(object):
 
         for term in Q.split():
             if term in self.doc_to_terms[d].counts:
-                result += self.tf(d, term) / len(self.term_to_docs[term])
+                result += self.tf(d, term) / self.term_to_docs[term]
 
         return result
 
