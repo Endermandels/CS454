@@ -18,25 +18,25 @@ def main(judgement_file, query_results):
             
             method = test_input[0]
             line_num = int(test_input[1]) - 1
-            threshold = int(test_input[2])
+            thresh = int(test_input[2])
             
             if not (0 <= line_num < len(lines)):
                 print('Line number does not exist\n')
                 continue
-            if not (0 <= threshold <= 4):
+            if not (0 <= thresh <= 4):
                 print('Threshold does not exist\n')
                 continue
             
             satisfaction = -1
             
             if method == 'prec':
-                satisfaction = ranking.prec(lines[line_num], threshold)
+                satisfaction = ranking.prec(lines[line_num], thresh)
             elif method == 'recall':
-                satisfaction = ranking.recall(lines[line_num], threshold)
+                satisfaction = ranking.recall(lines[line_num], thresh)
             elif method == 'rr':
-                satisfaction = ranking.rr(lines[line_num], threshold)
+                satisfaction = ranking.rr(lines[line_num], thresh)
             elif method == 'f1':
-                satisfaction = ranking.f1_score(lines[line_num], threshold)
+                satisfaction = ranking.f1_score(lines[line_num], thresh)
             elif method == 'ndcg':
                 satisfaction = ranking.ndcg(lines[line_num])
             else:

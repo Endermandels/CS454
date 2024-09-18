@@ -28,7 +28,7 @@ class Ranking(object):
         
         Formula: rel / k
         terms:
-            rel - relevance of a url based on judgement score
+            rel - number of relevant urls based on judgement score
             k   - number of returned results
         """
         parts = query_line.split()
@@ -42,7 +42,29 @@ class Ranking(object):
         return rel / self.NUM_RETURNED
 
     def recall(self, query_line, thresh):
-        return -1
+        """
+        Returns recall
+        
+        Formula: rel / total
+        Terms:
+            rel     - number of relevant urls based on judgement score
+            total   - total number of relevant urls
+        """
+        parts = query_line.split()
+        rel = 0
+        
+        for url in parts[3:self.NUM_RETURNED+3]:
+            score = self.url_scores[parts[0]].get(url, -1)
+            if score >= thresh:
+                rel += 1
+        
+        total = 0
+        
+        for score in self.url_scores[parts[0]].values():
+            if score >= thresh:
+                total += 1
+        
+        return rel / total
 
     def rr(self, query_line, thresh):
         return -1
