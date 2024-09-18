@@ -17,10 +17,10 @@ def main(judgement_file, query_results):
                 continue
             
             method = test_input[0]
-            line_num = int(test_input[1])
+            line_num = int(test_input[1]) - 1
             threshold = int(test_input[2])
             
-            if line_num >= len(lines):
+            if not (0 <= line_num < len(lines)):
                 print('Line number does not exist\n')
                 continue
             if not (0 <= threshold <= 4):
@@ -30,15 +30,15 @@ def main(judgement_file, query_results):
             satisfaction = -1
             
             if method == 'prec':
-                satisfaction = ranking.prec(lines[line_num].strip(), threshold)
+                satisfaction = ranking.prec(lines[line_num], threshold)
             elif method == 'recall':
-                satisfaction = ranking.recall(lines[line_num].strip(), threshold)
+                satisfaction = ranking.recall(lines[line_num], threshold)
             elif method == 'rr':
-                satisfaction = ranking.rr(lines[line_num].strip(), threshold)
+                satisfaction = ranking.rr(lines[line_num], threshold)
             elif method == 'f1':
-                satisfaction = ranking.f1_score(lines[line_num].strip(), threshold)
+                satisfaction = ranking.f1_score(lines[line_num], threshold)
             elif method == 'ndcg':
-                satisfaction = ranking.ndcg(lines[line_num].strip())
+                satisfaction = ranking.ndcg(lines[line_num])
             else:
                 print('Method does not exist\n')
                 continue
