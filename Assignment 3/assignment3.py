@@ -64,7 +64,7 @@ class Ranking(object):
             if score >= thresh:
                 total += 1
         
-        return rel / total
+        return rel / total if total != 0 else 0
 
     def rr(self, query_line, thresh):
         parts = query_line.split()
@@ -78,7 +78,12 @@ class Ranking(object):
         return pos
 
     def f1_score(self, query_line, thresh):
-        return -1
+        a = 0.5
 
+        recall = self.recall(query_line, thresh)
+        prec = self.prec(query_line, thresh)
+
+        return 1 / (a * (1 / prec) + (1 - a) * (1 / recall)) if recall != 0 and prec != 0 else 0
+        
     def ndcg(self, query_line):
         return -1
