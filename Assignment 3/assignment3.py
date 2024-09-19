@@ -67,7 +67,15 @@ class Ranking(object):
         return rel / total
 
     def rr(self, query_line, thresh):
-        return -1
+        parts = query_line.split()
+        pos = 0
+        
+        for i, url in enumerate(parts[3:self.NUM_RETURNED+3]):
+            score = self.url_scores[parts[0]].get(url, -1)
+            if score >= thresh:
+                pos = 1 / (i-3)
+        
+        return pos
 
     def f1_score(self, query_line, thresh):
         return -1
