@@ -27,8 +27,22 @@ def main(judgement_file, query_results):
                 print('Threshold does not exist\n')
                 continue
             
+            if method == 'all':
+                prec = ranking.prec(lines[line_num], thresh)
+                recall = ranking.recall(lines[line_num], thresh)
+                f1_score = ranking.f1_score(lines[line_num], thresh)
+                rr = ranking.rr(lines[line_num], thresh)
+                ndcg = ranking.ndcg(lines[line_num])
+
+                print('prec:', prec)
+                print('recall:', recall)
+                print('f1:', f1_score)
+                print('rr:', rr)
+                print('ndcg:', ndcg)
+                print()
+                continue
+
             satisfaction = -1
-            
             if method == 'prec':
                 satisfaction = ranking.prec(lines[line_num], thresh)
             elif method == 'recall':
