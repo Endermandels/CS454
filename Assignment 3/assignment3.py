@@ -15,7 +15,7 @@ class Ranking(object):
         }
         """
         
-        self.NUM_RETURNED = 10
+        self.NUM_RETURNED = 3
         self.url_scores = defaultdict(dict)
         with open(judgement_file, 'r') as file:
             for line in file:
@@ -35,7 +35,7 @@ class Ranking(object):
         rel = 0
         
         for url in parts[3:self.NUM_RETURNED+3]:
-            score = self.url_scores[parts[0]].get(url, -1)
+            score = self.url_scores[parts[0]].get(url, 0)
             if score >= thresh:
                 rel += 1
         
@@ -54,7 +54,7 @@ class Ranking(object):
         rel = 0
         
         for url in parts[3:self.NUM_RETURNED+3]:
-            score = self.url_scores[parts[0]].get(url, -1)
+            score = self.url_scores[parts[0]].get(url, 0)
             if score >= thresh:
                 rel += 1
         
@@ -78,9 +78,10 @@ class Ranking(object):
         pos = 0
         
         for i, url in enumerate(parts[3:self.NUM_RETURNED+3]):
-            score = self.url_scores[parts[0]].get(url, -1)
+            score = self.url_scores[parts[0]].get(url, 0)
             if score >= thresh:
-                pos = 1 / (i-3)
+                pos = 1 / (i+1)
+                break
         
         return pos
 
@@ -102,4 +103,44 @@ class Ranking(object):
         return 1 / (a * (1 / prec) + (1 - a) * (1 / recall)) if recall != 0 and prec != 0 else 0
         
     def ndcg(self, query_line):
-        return -1
+        """
+        Returns Normalized Discounted Cumulative Gain
+
+        Formula (NDCG): dcg / idcg
+        Formula (DCG): Sum from i = 1 to k (rel_i / log2 (i + 1))
+        Formula (IDCG): DCG with optimal relevance order
+        Terms:
+            rel_i   - relevance judgement score of i-th url
+            k       - number of returned results
+        """
+
+        parts = query_line.split()
+
+        # DCG
+        dcg = 0
+        score_counts = [0,0,0,0,0] # counts of scores 0-4
+
+        for i, url in enumerate(parts[3:self.NUM_RETURNED+3]):
+            # i starts at 0, hence "i + 2" in the log
+            dcg += self.url_scores[parts[0]].get(url, 0) / math.log2(i + 2) 
+            print('dcg step', i, dcg)
+
+        # IDCG
+        idcg = 0
+
+        for score in self.url_scores[parts[0]].values():
+            score_counts[score] += 1
+
+        idx = 4 # maximum score
+        for i in range(self.NUM_RETURNED):
+            while idx > 0:
+                if score_counts[idx] > 0:
+                    # print('results:', idx, i + 1)
+                    idcg += idx / math.log2(i + 2)
+                    score_counts[idx] -= 1
+                    break
+                else:
+                    idx -= 1
+
+        print('dcg', dcg, 'idcg', idcg)
+        return dcg / idcg if idcg != 0 else 0
