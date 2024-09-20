@@ -43,7 +43,7 @@ class Ranking(object):
 
     def recall(self, query_line, thresh):
         """
-        Returns recall
+        Returns recall (or 0 if the total number of relevant urls is 0)
         
         Formula: rel / total
         Terms:
@@ -67,6 +67,13 @@ class Ranking(object):
         return rel / total if total != 0 else 0
 
     def rr(self, query_line, thresh):
+        """
+        Returns reciprocal rank (or 0 if none of the returned urls are relevant)
+        
+        Formula: 1 / pos_r
+        Terms:
+            pos_r   - position of the first relevant url
+        """
         parts = query_line.split()
         pos = 0
         
@@ -78,6 +85,15 @@ class Ranking(object):
         return pos
 
     def f1_score(self, query_line, thresh):
+        """
+        Returns F1 score (or 0 if recall and precision are 0)
+        
+        Formula: 1 / (a * (1 / prec) + (1 - a) * (1 / recall))
+        Terms:
+            a       - a constant which balances the weight of precision and recall
+            prec    - precision
+            recall  - recall
+        """
         a = 0.5
 
         recall = self.recall(query_line, thresh)
