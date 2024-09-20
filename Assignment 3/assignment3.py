@@ -15,7 +15,7 @@ class Ranking(object):
         }
         """
         
-        self.NUM_RETURNED = 3
+        self.NUM_RETURNED = 10
         self.url_scores = defaultdict(dict)
         with open(judgement_file, 'r') as file:
             for line in file:
