@@ -42,7 +42,7 @@ class Ranking(object):
         rel = 0
         
         for url in parts[3:self.NUM_RETURNED+3]:
-            score = self.url_scores[parts[0]].get(url, 0)
+            score = self.url_scores[parts[0]].get(url, -1)
             if score >= thresh:
                 rel += 1
         
@@ -61,7 +61,7 @@ class Ranking(object):
         rel = 0
         
         for url in parts[3:self.NUM_RETURNED+3]:
-            score = self.url_scores[parts[0]].get(url, 0)
+            score = self.url_scores[parts[0]].get(url, -1)
             if score >= thresh:
                 rel += 1
         
@@ -85,7 +85,7 @@ class Ranking(object):
         pos = 0
         
         for i, url in enumerate(parts[3:self.NUM_RETURNED+3]):
-            score = self.url_scores[parts[0]].get(url, 0)
+            score = self.url_scores[parts[0]].get(url, -1)
             if score >= thresh:
                 pos = 1 / (i+1)
                 break
