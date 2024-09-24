@@ -1,3 +1,10 @@
+"""
+Assignment 3
+CS 454
+Elijah Delavar
+9/23/2024
+"""
+
 from collections import defaultdict
 import math
 
@@ -119,11 +126,10 @@ class Ranking(object):
         # DCG
         dcg = 0
         score_counts = [0,0,0,0,0] # counts of scores 0-4
-
+        
         for i, url in enumerate(parts[3:self.NUM_RETURNED+3]):
             # i starts at 0, hence "i + 2" in the log
             dcg += self.url_scores[parts[0]].get(url, 0) / math.log2(i + 2) 
-            print('dcg step', i, dcg)
 
         # IDCG
         idcg = 0
@@ -135,12 +141,10 @@ class Ranking(object):
         for i in range(self.NUM_RETURNED):
             while idx > 0:
                 if score_counts[idx] > 0:
-                    # print('results:', idx, i + 1)
                     idcg += idx / math.log2(i + 2)
                     score_counts[idx] -= 1
                     break
                 else:
                     idx -= 1
 
-        print('dcg', dcg, 'idcg', idcg)
         return dcg / idcg if idcg != 0 else 0
