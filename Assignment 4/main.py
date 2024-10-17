@@ -58,19 +58,57 @@ def add_docs(ind, docs_fn, url_map):
     
     writer.commit()
 
+def insert_ORs(string):
+    words = string.split()
+    new_string = ''
+    cnt = 0
+    for word in words:
+        new_string += word
+        if cnt < len(words)-1:
+            new_string += ' OR '
+        cnt += 1
+    return new_string
+
 def query_session(ind):
     try:
         with ind.searcher() as searcher:
+            qp = QueryParser("content", ind.schema)
+            limit = 10
+            disjunctive = False
             while True:
-                user_query = input('> ').strip().lower()
+                # Specify Limit using 'LIM' (case sensitive)
+                user_query = input('> ').strip()
+                if len(user_query) > 3 and user_query[0:3] == 'LIM':
+                    try:
+                        limit = int(user_query[3:])
+                    except Exception as e:
+                        print(f"Encountere error: {e}")
+                    continue
+                # Specify Conjunctive or Disjunctive
+                if user_query == 'DIS' or user_query == 'OR':
+                    disjunctive = True
+                    continue
+                if user_query == 'CON' or user_query == 'AND':
+                    disjunctive = False
+                    continue
 
-                query = QueryParser("content", ind.schema).parse(user_query)
-                results = searcher.search(query, terms=True)
+                user_query = user_query.lower()
                 
-                for hit in results:
-                    print('--------------------------------------------------------------------------')
+                # Insert OR's into disjunctive queries
+                if disjunctive:
+                    user_query = insert_ORs(user_query)
+
+                query = qp.parse(user_query)
+                results = searcher.search(query, terms=True, limit=limit)
+                
+                for i, hit in enumerate(results):
+                    print(f'------------------------------------ RESULT {i+1} ------------------------------------')
                     print('Title:', hit['title'])
                     print('Score:\n  ', hit.score)
+                    print()
+                    if results.has_matched_terms():
+                        print('Matched Terms:\n  ', hit.matched_terms())
+                        print()
                     print('Highlights:\n')
                     print(hit.highlights("content"))
                     print()
