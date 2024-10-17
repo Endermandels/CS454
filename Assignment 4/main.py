@@ -10,13 +10,12 @@ import sys
 IND_PATH = '_index'
 DOCS_PATH = 'docs'
 URL_MAP_PATH = '_url_map.dat'
-REBUILD = False
 
-def create_index(fn):
+def create_index(fn, rebuild):
     schema = Schema(url=ID(stored=True, unique=True), title=TEXT(stored=True), content=TEXT(stored=True))
     
     if os.path.exists(fn):
-        if REBUILD:
+        if rebuild:
             shutil.rmtree(fn)
         else:
             return index.open_dir(fn, schema=schema)
@@ -39,7 +38,7 @@ def unpickle_url_map(fn):
 def extract_content(html):
     page = BeautifulSoup(html, 'html.parser')
     title = str(page.title.string) if page.title else 'No Title'
-    content = page.get_text(strip=True).lower()
+    content = page.get_text(separator=' ', strip=True).lower()
     return title, content
 
 def add_docs(ind, docs_fn, url_map):
@@ -68,6 +67,21 @@ def insert_ORs(string):
             new_string += ' OR '
         cnt += 1
     return new_string
+
+def print_hits(results):
+    for i, hit in enumerate(results):
+        print(f'------------------------------------ RESULT {i+1} ------------------------------------')
+        print('Title:', hit['title'])
+        print('URL:\n  ', hit['url'])
+        print()
+        print('Score:\n  ', hit.score)
+        print()
+        if results.has_matched_terms():
+            print('Matched Terms:\n  ', hit.matched_terms())
+            print()
+        print('Highlights:\n')
+        print(hit.highlights("content"))
+        print()
 
 def query_session(ind):
     try:
@@ -101,24 +115,19 @@ def query_session(ind):
                 query = qp.parse(user_query)
                 results = searcher.search(query, terms=True, limit=limit)
                 
-                for i, hit in enumerate(results):
-                    print(f'------------------------------------ RESULT {i+1} ------------------------------------')
-                    print('Title:', hit['title'])
-                    print('Score:\n  ', hit.score)
-                    print()
-                    if results.has_matched_terms():
-                        print('Matched Terms:\n  ', hit.matched_terms())
-                        print()
-                    print('Highlights:\n')
-                    print(hit.highlights("content"))
-                    print()
+                print_hits(results)
+                
     except KeyboardInterrupt:
         print('Exiting...')
 
 def main():
-    ind = create_index(IND_PATH)
+    rebuild = False
+    if len(sys.argv) > 1 and sys.argv[1] == '-r':
+        rebuild = True
+
+    ind = create_index(IND_PATH, rebuild)
     url_map = unpickle_url_map(URL_MAP_PATH)
-    if REBUILD:
+    if rebuild:
         add_docs(ind, DOCS_PATH, url_map)
     query_session(ind)
 
