@@ -114,6 +114,7 @@ def query_session(ind):
 
                 query = qp.parse(user_query)
                 results = searcher.search(query, terms=True, limit=limit)
+                results.fragmenter.charlimit = None
                 
                 print_hits(results)
                 
