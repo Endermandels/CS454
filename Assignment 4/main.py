@@ -9,10 +9,11 @@ import pickle
 import sys
 
 import time
+import string
 
 import whoosh.searching
 
-DEBUG = False
+DEBUG = True
 
 IND_PATH = '_index' # Whoosh-generated index directory
 URL_MAP_PATH = '_url_map.dat' # Pickled dictionary (key: url, val: document name in docs folder)
@@ -80,6 +81,9 @@ def extract_content(html : str) -> tuple[str, str]:
     page = BeautifulSoup(html, 'html.parser')
     title = str(page.title.string) if page.title else 'No Title'
     content = page.get_text(separator=' ', strip=True).lower()
+    # translate code from this stack overflow: 
+    # https://stackoverflow.com/questions/265960/best-way-to-strip-punctuation-from-a-string
+    content = content.translate(str.maketrans('','', string.punctuation))
     return title, content
 
 def add_docs(ind : index.Index, docs_fn : str, url_map : dict):
@@ -169,6 +173,7 @@ def query_session(ind : index.Index):
     """
     try:
         with ind.searcher() as searcher:
+            print(f'Document count: {searcher.doc_count()}')
             qp = QueryParser("content", ind.schema)
             limit = 10
             disjunctive = False
