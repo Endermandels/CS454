@@ -36,7 +36,7 @@ def create_index(fn : str, rebuild : bool) -> index.Index:
         Whoosh Index, whether the index was rebuilt
     """
     schema = Schema(
-        url=ID(stored=True, unique=True)
+        url=ID(stored=True)
         , title=TEXT(stored=True)
         , content=TEXT(stored=True)
     )
