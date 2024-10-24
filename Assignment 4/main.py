@@ -13,7 +13,7 @@ import string
 
 import whoosh.searching
 
-DEBUG = True
+DEBUG = False
 
 IND_PATH = '_index' # Whoosh-generated index directory
 URL_MAP_PATH = '_url_map.dat' # Pickled dictionary (key: url, val: document name in docs folder)
@@ -24,7 +24,7 @@ DOCS_PATH = 'docs' # Raw HTML of collected web pages
 def create_index(fn : str, rebuild : bool) -> index.Index:
     """
     Create Index Schema with following attributes (all stored in the index):
-        url: ID, unique
+        url: ID
         title: TEXT
         content: TEXT
     
