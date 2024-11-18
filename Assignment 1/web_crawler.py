@@ -26,10 +26,10 @@ URL_MAP_FN = 'url_map.dat'
 METADATA_FN = 'metadata.dat'
 ADJ_MATRIX_FN = 'adjacency_matrix.csv'
 BACKUP_PERIOD = 100 # how many loops before backing up metadata
-DOCS_COUNT = 6000 # how many documents need to be collected (-1 for until stopped)
+DOCS_COUNT = 4000 # how many documents need to be collected (-1 for until stopped)
 DOMAINS = [
-	'wikipedia'
-	, 'wiktionary'
+	'en.wikipedia'
+	, 'en.wiktionary'
 ] # Domains containing these strings will be promoted
 SEED_URLS = [
 	'https://en.wiktionary.org/wiki/Wiktionary:Main_Page'
@@ -84,7 +84,15 @@ def filter_links(href):
 	"""
 	if href:
 		# Do not include Random, as it could cause problems while storing the urls
-		return not re.compile('/wiki/Special:Random').search(href)
+		if re.compile('/wiki/Special:Random').search(href):
+			return False
+		if re.compile('#').search(href):
+			return False
+		if re.compile('Category:').search(href):
+			return False
+		if re.compile(':Citation').search(href):
+			return False
+		return True
 	return False
 
 def new_domain(url, prev_domain, delay):
