@@ -25,6 +25,7 @@ DOCS_PATH = 'docs' # Raw HTML of collected web pages
 # NOTE: DOCS_PATH has to be named 'docs' because of how the _url_map.dat 
 # dictionary stores the paths to files
 
+# Necessary in order to add max_quality and block_quality implementations
 class CustomWeighting(FunctionWeighting):
     class FunctionScorer(BaseScorer):
         def __init__(self, fn, searcher, fieldname, text, qf=1):
@@ -38,10 +39,10 @@ class CustomWeighting(FunctionWeighting):
             return self.fn(self.searcher, self.fieldname, self.text, matcher)
         
         def max_quality(self):
-            return 1
+            return 1 # Maximum possible page rank score
         
         def block_quality(self, matcher):
-            return 1
+            return 1 # Maximum possible page rank score
 
 def create_index(fn: str, rebuild: bool) -> index.Index:
     """
@@ -49,6 +50,8 @@ def create_index(fn: str, rebuild: bool) -> index.Index:
         url: ID
         title: TEXT
         content: TEXT
+    
+    NOTE: By default Whoosh stops on common words such as 'and', 'the', 'a', etc.
     
     Params
         fn:      Folder name to store/load index
@@ -183,9 +186,12 @@ def query_session(ind: index.Index, rankings: pd.DataFrame):
         <query>         (any other input; will return results from)
     
     To exit from the terminal session, send the interrupt signal (Ctrl + C for Windows/Linux; Cmd + . for Mac)
+    
+    NOTE: Ranks documents by PageRank score.
 
     Params
-        ind: Whoosh index
+        ind:        Whoosh index
+        rankings:   PageRank of each url
     """
     
     def page_rank(searcher, fieldname, text, matcher):
