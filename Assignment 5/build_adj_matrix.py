@@ -104,10 +104,14 @@ def main():
     if len(sys.argv) > 1:
         if sys.argv[1] == '-d':
             with open('_url_map.dat', 'rb') as file:
-                print(build_adj_dict(pickle.load(file), '_adj_dict.dat'))
+                print('building adjacency dictionary...')
+                build_adj_dict(pickle.load(file), '_adj_dict.dat')
+            print('finished')
         elif sys.argv[1] == '-m':
             with open('_adj_dict.dat', 'rb') as file:
-                print(build_adj_matrix(pickle.load(file), '_adj_matrix.dat'))
+                print('building adjacency matrix...')
+                build_adj_matrix(pickle.load(file), '_adj_matrix.dat')
+            print('finished')
         else:
             print('usage: python3 build_adj_matrix.py <-d | -m>')
     else:
