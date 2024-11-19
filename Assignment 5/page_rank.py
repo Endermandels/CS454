@@ -20,9 +20,11 @@ def page_rank(adj_matrix: pd.DataFrame, iterations: int, save_fn: str):
     n = adj_matrix.shape[0]
     scores_vector = np.full(n, 1/n)
     transition_matrix = init_transition_matrix(adj_matrix)
+  
     for _ in range(iterations):
         scores_vector = scores_vector @ transition_matrix
-    rankings = pd.DataFrame(scores_vector, index=adj_matrix.index)
+        
+    rankings = pd.DataFrame(scores_vector, index=adj_matrix.index, columns=['Rank'])
     with open(save_fn, 'wb') as file:
         pickle.dump(rankings, file)
     return rankings
